@@ -30,7 +30,7 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         uint256 quoteAmountOut, 
         address indexed to
     );
-    
+     
     event Sync(uint112 baseReserves, uint112 quoteReserves);
 
     /* -------------------------------------------------------------------------- */
@@ -103,14 +103,15 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         // store current time in memory (mod 2**32 to prevent DoS in 20 years)
         uint32 NOW = uint32(block.timestamp % 2**32);
         
-        // overflow is desired
-        uint256 timeElapsed = NOW.uSub(lastUpdate); 
-        
-        // if oracle info hasn"t been updated this block, and reserves are greater
-        // than zero, update oracle info
-        if (timeElapsed > 0 && _baseReserves != 0 && _quoteReserves != 0) {
-            basePriceCumulativeLast = basePriceCumulativeLast.uAdd(_quoteReserves.uFrac(Q112, _baseReserves).uMul(timeElapsed));
-            quotePriceCumulativeLast = quotePriceCumulativeLast.uAdd(_baseReserves.uFrac(Q112, _quoteReserves).uMul(timeElapsed));
+        unchecked {
+            uint256 timeElapsed = NOW - lastUpdate; 
+            
+            // if oracle info hasn"t been updated this block, and reserves are greater
+            // than zero, update oracle info
+            if (timeElapsed > 0 && _baseReserves != 0 && _quoteReserves != 0) {
+                basePriceCumulativeLast += _quoteReserves * Q112 / _baseReserves * timeElapsed;
+                quotePriceCumulativeLast += _baseReserves * Q112 / _quoteReserves * timeElapsed;
+            }
         }
         
         // sync reserves (make them match balances)
@@ -274,7 +275,7 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         address token,
         uint256 amount,
         bytes calldata data
-    ) external returns (bool) {
+    ) external nonReentrant returns (bool) {
         TransferHelper.safeTransfer(token, address(receiver), amount);
         receiver.onFlashLoan(msg.sender, token, amount, 0, data);
         TransferHelper.safeTransferFrom(token, address(receiver), address(this), amount);
