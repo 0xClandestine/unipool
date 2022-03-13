@@ -7,13 +7,7 @@ import {FixedPointMathLib}      from "@rari-capital/solmate/src/utils/FixedPoint
 import {TransferHelper}         from "@uniswap/lib/contracts/libraries/TransferHelper.sol";
 import {IERC3156FlashBorrower}  from "@openzeppelin/contracts/interfaces/IERC3156FlashLender.sol";
 
-import {UncheckedMathLib}       from "./libraries/UncheckedMathLib.sol";
-
 contract Unipool is ERC20("", "", 18), ReentrancyGuard {
-
-    using UncheckedMathLib for uint256;
-    using UncheckedMathLib for uint112;
-    using UncheckedMathLib for uint32;
 
     /* -------------------------------------------------------------------------- */
     /*                                   EVENTS                                   */
@@ -126,6 +120,7 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
 
     // this low-level function should be called from a contract which performs important safety checks
     function mint(address to) external nonReentrant returns (uint256 liquidity) {
+
         // store any variables used more than once in memory to avoid SLOAD"s
         (uint112 _baseReserves, uint112 _quoteReserves,) = getReserves();
         uint256 baseBalance = ERC20(base).balanceOf(address(this));
@@ -134,9 +129,14 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         uint256 quoteAmount = quoteBalance - (_quoteReserves);
         uint256 _totalSupply = totalSupply;
 
-        if (_totalSupply == MINIMUM_LIQUIDITY) liquidity = FixedPointMathLib.sqrt(baseAmount * quoteAmount) - MINIMUM_LIQUIDITY;
+        // TODO look into removing this conditional, and require initial liquidity is minted on pool creation, save dat gas
+        if (_totalSupply == MINIMUM_LIQUIDITY)
+            liquidity = FixedPointMathLib.sqrt(baseAmount * quoteAmount) - MINIMUM_LIQUIDITY;
         
-        else liquidity = min((baseAmount * _totalSupply).uDiv(_baseReserves), (quoteAmount * _totalSupply).uDiv(_quoteReserves));
+        else liquidity = min(
+            uDiv(baseAmount * _totalSupply, _baseReserves), 
+            uDiv(quoteAmount * _totalSupply, _quoteReserves)
+        );
         
         // revert if Lp tokens out is equal to zero
         if (liquidity == 0) revert INSUFFICIENT_LIQUIDITY_MINTED();
@@ -165,8 +165,8 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         uint256 _totalSupply = totalSupply;         
 
         // division was originally unchecked, using balances ensures pro-rata distribution
-        baseAmount = (liquidity * baseBalance).uDiv(_totalSupply); 
-        quoteAmount = (liquidity * quoteBalance).uDiv(_totalSupply);
+        baseAmount = uDiv(liquidity * baseBalance, _totalSupply); 
+        quoteAmount = uDiv(liquidity * quoteBalance, _totalSupply);
         
         // revert if amountOuts are both equal to zero
         if (baseAmount == 0 && quoteAmount == 0) revert INSUFFICIENT_LIQUIDITY_BURNED();
@@ -196,6 +196,7 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
     }
 
     function swap(uint256 baseAmountOut, uint256 quoteAmountOut, address to) public nonReentrant {
+
         // store reserves in memory to avoid SLOAD"s
         (uint112 _baseReserves, uint112 _quoteReserves,) = getReserves();
         
@@ -211,7 +212,7 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         uint256 baseBalance;
         uint256 quoteBalance;
         
-        {
+        { // avoid stack too deep error
         address _base = base;
         address _quote = quote;
 
@@ -225,17 +226,19 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         quoteBalance = ERC20(_quote).balanceOf(address(this));
         }
 
-        // calculate amountIn"s by comparing last known reserves to current contract balance
-        // unchecked math is save here because current balance can only be greater than last
-        // known reserves, additionally amountOut"s are checked against reserves above
-        if (baseBalance > _baseReserves.uSub(baseAmountOut)) baseAmountIn = baseBalance.uSub(_baseReserves.uSub(baseAmountOut));
-        if (quoteBalance > _quoteReserves.uSub(quoteAmountOut)) quoteAmountIn = quoteBalance.uSub(_quoteReserves.uSub(quoteAmountOut));
-        // revert if sum of amountIn"s is equal to zero
-        // revert if current k adjusted for fees is less than old k
-        if (baseAmountIn.uAdd(quoteAmountIn) == 0) revert INSUFFICIENT_INPUT_AMOUNT();   
+        unchecked {
+            // calculate amountIn"s by comparing last known reserves to current contract balance
+            // unchecked math is save here because current balance can only be greater than last
+            // known reserves, additionally amountOut"s are checked against reserves above
+            if (baseBalance > _baseReserves - baseAmountOut) baseAmountIn = baseBalance - (_baseReserves - baseAmountOut);
+            if (quoteBalance > _quoteReserves - quoteAmountOut) quoteAmountIn = quoteBalance - (_quoteReserves - quoteAmountOut);
+            // revert if sum of amountIn"s is equal to zero
+            if (baseAmountIn + quoteAmountIn == 0) revert INSUFFICIENT_INPUT_AMOUNT();
+        }
 
+        // revert if current k adjusted for fees is less than old k
         if ((baseBalance * BIPS_DIVISOR - baseAmountIn * swapFee) * (quoteBalance * BIPS_DIVISOR - quoteAmountIn * swapFee) < 
-            uint(_baseReserves) * _quoteReserves * 1e8) revert INSUFFICIENT_INVARIANT();
+            uint(_baseReserves) * _quoteReserves * FixedPointMathLib.YAD) revert INSUFFICIENT_INVARIANT();
 
 
         // update mutable storage (reserves + cumulative oracle prices)
@@ -249,8 +252,8 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         address _base = base;
         address _quote = quote;
         // transfer unaccounted reserves -> "to"
-        TransferHelper.safeTransfer(_base, to, ERC20(_base).balanceOf(address(this)) - (baseReserves));
-        TransferHelper.safeTransfer(_quote, to, ERC20(_quote).balanceOf(address(this)) - (quoteReserves));
+        TransferHelper.safeTransfer(_base, to, ERC20(_base).balanceOf(address(this)) - baseReserves);
+        TransferHelper.safeTransfer(_quote, to, ERC20(_quote).balanceOf(address(this)) - quoteReserves);
     }
 
     // force reserves to match balances
@@ -267,7 +270,7 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
     }
 
     function flashFee(address token, uint256 amount) public view returns (uint256) {
-        return amount * loanFee / BIPS_DIVISOR;
+        return FixedPointMathLib.fmul(amount, loanFee, BIPS_DIVISOR);
     }
 
     function flashLoan(
@@ -277,8 +280,9 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         bytes calldata data
     ) external nonReentrant returns (bool) {
         TransferHelper.safeTransfer(token, address(receiver), amount);
-        receiver.onFlashLoan(msg.sender, token, amount, 0, data);
-        TransferHelper.safeTransferFrom(token, address(receiver), address(this), amount);
+        uint256 fee = flashFee(token, amount);
+        receiver.onFlashLoan(msg.sender, token, amount, flashFee(token, amount), data);
+        TransferHelper.safeTransferFrom(token, address(receiver), address(this), amount + fee);
         return true;
     }
 
@@ -287,14 +291,17 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
     /* -------------------------------------------------------------------------- */
 
     // function scaleK(uint256 x, uint256 y, uint256 tk) public pure returns (uint256, uint256) {
-    //     unchecked {
-    //         uint256 rootK = fsqrt(x*y);
-    //         uint256 rootTk = fsqrt(tk);
-    //         x *= rootTk / rootK;
-    //         y *= rootTk / rootK;
-    //         return (x, y);
-    //     }
+    //     x *= rootTk / FixedPointMathLib.sqrt(x*y);
+    //     y *= rootTk / FixedPointMathLib.sqrt(tk);
+    //     return (x, y);
     // }
+
+    // unchecked division
+    function uDiv(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        assembly {
+            z := div(x, y)
+        }
+    }
 
     function min(uint256 x, uint256 y) internal pure returns (uint256 z) {
         z = x < y ? x : y;

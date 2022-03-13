@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPLv3
 pragma solidity >=0.8.0;
 
+// Lib for unchecked arithmetic within checked logic
 library UncheckedMathLib {
     function uAdd(uint256 x, uint256 y) internal pure returns (uint256 z) {assembly {z := add(x, y)}}
     function uSub(uint256 x, uint256 y) internal pure returns (uint256 z) {assembly {z := sub(x, y)}}
