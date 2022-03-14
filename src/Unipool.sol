@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPLv3
 pragma solidity >=0.8.0;
 
+// ██    ██ ███    ██ ██ ██████   ██████   ██████  ██      
+// ██    ██ ████   ██ ██ ██   ██ ██    ██ ██    ██ ██      
+// ██    ██ ██ ██  ██ ██ ██████  ██    ██ ██    ██ ██      
+// ██    ██ ██  ██ ██ ██ ██      ██    ██ ██    ██ ██      
+//  ██████  ██   ████ ██ ██       ██████   ██████  ███████
+
 import {ERC20}                  from "@rari-capital/solmate/src/tokens/ERC20.sol";
 import {ReentrancyGuard}        from "@rari-capital/solmate/src/utils/ReentrancyGuard.sol";
 import {FixedPointMathLib}      from "@rari-capital/solmate/src/utils/FixedPointMathLib.sol";
 import {TransferHelper}         from "@uniswap/lib/contracts/libraries/TransferHelper.sol";
-import {IERC3156FlashBorrower}  from "@openzeppelin/contracts/interfaces/IERC3156FlashLender.sol";
 
-contract Unipool is ERC20("", "", 18), ReentrancyGuard {
+contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuard {
 
     /* -------------------------------------------------------------------------- */
     /*                                   EVENTS                                   */
@@ -31,30 +36,25 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
     /*                                  CONSTANTS                                 */
     /* -------------------------------------------------------------------------- */
 
-    uint256 internal constant Q112 = type(uint112).max;
-
-    uint256 internal constant BIPS_DIVISOR = 10_000;
-
     // To avoid division by zero, there is a minimum number of liquidity tokens that always 
-    // exist (but are owned by account zero). That number is MINIMUM_LIQUIDITY, a thousand.
-    uint256 internal constant MINIMUM_LIQUIDITY = 1000;
+    // exist (but are owned by account zero). That number is BIPS_DIVISOR, ten thousand.
+    uint256 internal constant PRECISION = 112;
+    uint256 internal constant BIPS_DIVISOR = 10_000;
 
     /* -------------------------------------------------------------------------- */
     /*                                MUTABLE STATE                               */
     /* -------------------------------------------------------------------------- */
 
-    address public base;   // IE CNV
-    address public quote;  // IE DAI
+    address public base;
+    address public quote;
 
     uint256 public swapFee;
-    uint256 public loanFee;
-
     uint256 public basePriceCumulativeLast;
     uint256 public quotePriceCumulativeLast;
-
-    uint112 private baseReserves;   // uses single storage slot, accessible via getReserves
-    uint112 private quoteReserves;  // uses single storage slot, accessible via getReserves
-    uint32  private lastUpdate;     // uses single storage slot, accessible via getReserves
+    
+    uint112 private baseReserves;   
+    uint112 private quoteReserves;
+    uint32  private lastUpdate;
 
     function getReserves() public view returns (uint112 _baseReserves, uint112 _quoteReserves, uint32 _lastUpdate) {
         (_baseReserves, _quoteReserves, _lastUpdate) = (baseReserves, quoteReserves, lastUpdate);
@@ -70,83 +70,66 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
     function initialize(
         address _base, 
         address _quote, 
-        uint256 _swapFee, 
-        uint256 _loanFee
+        uint256 _swapFee
     ) external {
+        // 1) revert if swap fee is greater than 50 bips
         if (_swapFee > 50) revert BAD_FEE();
-        if (_loanFee > 50) revert BAD_FEE();
-
-        base = _base;
-        quote = _quote;
-
-        swapFee = _swapFee;
-        loanFee = _loanFee;
-
-        // permanently lock the first MINIMUM_LIQUIDITY tokens
-        _mint(address(0), MINIMUM_LIQUIDITY); 
+        // 2) initialize mutable storage
+        (base, quote, swapFee) = (_base, _quote, _swapFee);
+        // 3) lock minimum liquidity to prevent division by zero
+        _mint(address(0), BIPS_DIVISOR); 
     }
 
     error BALANCE_OVERFLOW();
 
-    // update reserves and, on the first call per block, price accumulators
-    function _update(uint256 baseBalance, uint256 quoteBalance, uint112 _baseReserves, uint112 _quoteReserves) private {
-        
-        // revert if both balances are greater than 2**112
-        if (baseBalance > Q112 && quoteBalance > Q112) revert BALANCE_OVERFLOW();
-        
-        // store current time in memory (mod 2**32 to prevent DoS in 20 years)
-        uint32 NOW = uint32(block.timestamp % 2**32);
-        
+    /// @notice update reserves and, on the first call per block, price accumulators
+    function _update(
+        uint256 baseBalance, 
+        uint256 quoteBalance, 
+        uint112 _baseReserves, 
+        uint112 _quoteReserves
+    ) private {
         unchecked {
-            uint256 timeElapsed = NOW - lastUpdate; 
-            
-            // if oracle info hasn"t been updated this block, and reserves are greater
-            // than zero, update oracle info
+            // 1) revert if both balances are greater than 2**112
+            if (baseBalance > type(uint112).max && quoteBalance > type(uint112).max) revert BALANCE_OVERFLOW();
+            // 2) store current time in memory (mod 2**32 to prevent DoS in 20 years)
+            uint32 timestampAdjusted = uint32(block.timestamp % 2**32);
+            // 3) store elapsed time since last update
+            uint256 timeElapsed = timestampAdjusted - lastUpdate; 
+            // 4) if oracle info hasn"t been updated this block, and there's liquidity, update TWAP variables
             if (timeElapsed > 0 && _baseReserves != 0 && _quoteReserves != 0) {
-                basePriceCumulativeLast += _quoteReserves * Q112 / _baseReserves * timeElapsed;
-                quotePriceCumulativeLast += _baseReserves * Q112 / _quoteReserves * timeElapsed;
+                basePriceCumulativeLast += (uint(_quoteReserves) << PRECISION) / _baseReserves * timeElapsed;
+                quotePriceCumulativeLast += (uint(_baseReserves) << PRECISION) / _quoteReserves * timeElapsed;
             }
+            // 5) sync reserves (make them match balances)
+            (baseReserves, quoteReserves, lastUpdate) = (uint112(baseBalance), uint112(quoteBalance), timestampAdjusted);
+            // 6) emit event since mutable storage was updated
+            emit Sync(baseReserves, quoteReserves);
         }
-        
-        // sync reserves (make them match balances)
-        baseReserves = uint112(baseBalance);
-        quoteReserves = uint112(quoteBalance);
-        lastUpdate = NOW;
-        
-        emit Sync(baseReserves, quoteReserves);
     }
 
     error INSUFFICIENT_LIQUIDITY_MINTED();
 
     // this low-level function should be called from a contract which performs important safety checks
     function mint(address to) external nonReentrant returns (uint256 liquidity) {
-
-        // store any variables used more than once in memory to avoid SLOAD"s
+        // 1) store any variables used more than once in memory to avoid SLOAD"s
         (uint112 _baseReserves, uint112 _quoteReserves,) = getReserves();
         uint256 baseBalance = ERC20(base).balanceOf(address(this));
         uint256 quoteBalance = ERC20(quote).balanceOf(address(this));
         uint256 baseAmount = baseBalance - (_baseReserves);
         uint256 quoteAmount = quoteBalance - (_quoteReserves);
         uint256 _totalSupply = totalSupply;
-
-        // TODO look into removing this conditional, and require initial liquidity is minted on pool creation, save dat gas
-        if (_totalSupply == MINIMUM_LIQUIDITY)
-            liquidity = FixedPointMathLib.sqrt(baseAmount * quoteAmount) - MINIMUM_LIQUIDITY;
-        
-        else liquidity = min(
-            uDiv(baseAmount * _totalSupply, _baseReserves), 
-            uDiv(quoteAmount * _totalSupply, _quoteReserves)
-        );
-        
-        // revert if Lp tokens out is equal to zero
+        // 2) if lp token total supply is equal to BIPS_DIVISOR (1,000 wei), 
+        // amountOut (liquidity) is equal to the root of k minus BIPS_DIVISOR  
+        if (_totalSupply == BIPS_DIVISOR) liquidity = FixedPointMathLib.sqrt(baseAmount * quoteAmount) - BIPS_DIVISOR; 
+        else liquidity = min(uDiv(baseAmount * _totalSupply, _baseReserves), uDiv(quoteAmount * _totalSupply, _quoteReserves));
+        // 3) revert if Lp tokens out is equal to zero
         if (liquidity == 0) revert INSUFFICIENT_LIQUIDITY_MINTED();
-
-        // mint liquidity providers LP tokens
+        // 4) mint liquidity providers LP tokens        
         _mint(to, liquidity);
-
-        // update mutable storage (reserves + cumulative oracle prices)
+        // 5) update mutable storage (reserves + cumulative oracle prices)
         _update(baseBalance, quoteBalance, _baseReserves, _quoteReserves);
-
+        // 6) emit event since mutable storage was updated  
         emit Mint(msg.sender, baseAmount, quoteAmount);
     }
 
@@ -154,8 +137,7 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
 
     // this low-level function should be called from a contract which performs important safety checks
     function burn(address to) external nonReentrant returns (uint256 baseAmount, uint256 quoteAmount) {
-        
-        // store any variables used more than once in memory to avoid SLOAD"s
+        // 1) store any variables used more than once in memory to avoid SLOAD"s
         (uint112 _baseReserves, uint112 _quoteReserves,) = getReserves();   
         address _base = base;                                    
         address _quote = quote;                                    
@@ -163,24 +145,19 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
         uint256 quoteBalance = ERC20(_quote).balanceOf(address(this));          
         uint256 liquidity = balanceOf[address(this)];                 
         uint256 _totalSupply = totalSupply;         
-
-        // division was originally unchecked, using balances ensures pro-rata distribution
+        // 2) division was originally unchecked, using balances ensures pro-rata distribution
         baseAmount = uDiv(liquidity * baseBalance, _totalSupply); 
         quoteAmount = uDiv(liquidity * quoteBalance, _totalSupply);
-        
-        // revert if amountOuts are both equal to zero
+        // 3) revert if amountOuts are both equal to zero
         if (baseAmount == 0 && quoteAmount == 0) revert INSUFFICIENT_LIQUIDITY_BURNED();
-        
-        // burn LP tokens from this contract"s balance
+        // 4) burn LP tokens from this contract"s balance        
         _burn(address(this), liquidity);
-        
-        // return liquidity providers underlying tokens
+        // 5) return liquidity providers underlying tokens        
         TransferHelper.safeTransfer(_base, to, baseAmount);
         TransferHelper.safeTransfer(_quote, to, quoteAmount);
-        
-        // update mutable storage (reserves + cumulative oracle prices)
+        // 6) update mutable storage (reserves + cumulative oracle prices)        
         _update(ERC20(_base).balanceOf(address(this)), ERC20(_quote).balanceOf(address(this)), _baseReserves, _quoteReserves);
-        
+        // 7) emit event since mutable storage was updated     
         emit Burn(msg.sender, baseAmount, quoteAmount, to);
     }
 
@@ -188,60 +165,63 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
     error INSUFFICIENT_LIQUIDITY();
     error INSUFFICIENT_INPUT_AMOUNT();
     error INSUFFICIENT_INVARIANT();
-    error FLASHSWAPS_NOT_SUPPORTED();
 
-    function swap(uint256 baseAmountOut, uint256 quoteAmountOut, address to, bytes calldata data) external {
-        if (data.length > 0) revert FLASHSWAPS_NOT_SUPPORTED();
-        swap(baseAmountOut, quoteAmountOut, to);
-    }
-
-    function swap(uint256 baseAmountOut, uint256 quoteAmountOut, address to) public nonReentrant {
-
-        // store reserves in memory to avoid SLOAD"s
-        (uint112 _baseReserves, uint112 _quoteReserves,) = getReserves();
-        
-        // revert if sum of amountOut"s is zero
-        // revert if either amountOut is greater than it"s underlying reserve
+    /// @notice Optimistically swap tokens, will revert if K is not satisfied
+    /// @param baseAmountOut - amount of base tokens user wants to receive
+    /// @param quoteAmountOut - amount of quote tokens user wants to receive
+    /// @param to - recipient of 'output' tokens
+    /// @param data - arbitrary data used during flashswaps
+    function swap(
+        uint256 baseAmountOut, 
+        uint256 quoteAmountOut, 
+        address to, 
+        bytes calldata data
+    ) public nonReentrant {
+        // 1) revert if both amounts out are zero
+        // 2) store reserves in memory to avoid SLOAD"s
+        // 3) revert if both amounts out
+        // 4) store any other variables used more than once in memory to avoid SLOAD"s
         if (baseAmountOut + quoteAmountOut == 0) revert INSUFFICIENT_OUTPUT_AMOUNT();
-        if (baseAmountOut >= _baseReserves && quoteAmountOut >= _quoteReserves) revert INSUFFICIENT_LIQUIDITY();
-        
-        // store any variables used more than once in memory to avoid SLOAD"s
+        (uint112 _baseReserves, uint112 _quoteReserves,) = getReserves();
+        if (baseAmountOut > _baseReserves || quoteAmountOut >=_quoteReserves) revert INSUFFICIENT_LIQUIDITY();
         uint256 baseAmountIn;
         uint256 quoteAmountIn;
-        uint256 _swapFee = swapFee;
         uint256 baseBalance;
         uint256 quoteBalance;
-        
-        { // avoid stack too deep error
+        {
         address _base = base;
         address _quote = quote;
-
-        // optimistically transfer "to" base
-        // optimistically transfer "to" quote
+        // 1) optimistically transfer "to" base tokens
+        // 2) optimistically transfer "to" quote tokens
+        // 3) if data length is greater than 0, initiate flashswap
+        // 4) store base token balance of contract in memory
+        // 5) store quote token balance of contract in memory
         if (baseAmountOut > 0) TransferHelper.safeTransfer(_base, to, baseAmountOut); 
         if (quoteAmountOut > 0) TransferHelper.safeTransfer(_quote, to, quoteAmountOut);
-        
-        // store any variables used more than once in memory to avoid SLOAD"s
+        if (data.length > 0) IUniswapV2Callee(to).uniswapV2Call(msg.sender, baseAmountOut, quoteAmountOut, data);
         baseBalance = ERC20(_base).balanceOf(address(this));
         quoteBalance = ERC20(_quote).balanceOf(address(this));
-        }
-
+        } 
+        
         unchecked {
-            // calculate amountIn"s by comparing last known reserves to current contract balance
-            // unchecked math is save here because current balance can only be greater than last
-            // known reserves, additionally amountOut"s are checked against reserves above
+            // 1) calculate baseAmountIn by comparing contracts balance to last known reserve
+            // 2) calculate quoteAmountIn by comparing contracts balance to last known reserve
+            // 3) revert if user hasn't sent any tokens to the contract 
             if (baseBalance > _baseReserves - baseAmountOut) baseAmountIn = baseBalance - (_baseReserves - baseAmountOut);
             if (quoteBalance > _quoteReserves - quoteAmountOut) quoteAmountIn = quoteBalance - (_quoteReserves - quoteAmountOut);
-            // revert if sum of amountIn"s is equal to zero
             if (baseAmountIn + quoteAmountIn == 0) revert INSUFFICIENT_INPUT_AMOUNT();
         }
 
-        // revert if current k adjusted for fees is less than old k
-        if ((baseBalance * BIPS_DIVISOR - baseAmountIn * swapFee) * (quoteBalance * BIPS_DIVISOR - quoteAmountIn * swapFee) < 
-            uint(_baseReserves) * _quoteReserves * FixedPointMathLib.YAD) revert INSUFFICIENT_INVARIANT();
-
-
-        // update mutable storage (reserves + cumulative oracle prices)
+        {
+        // 1) store swap fee in memory to save SLOAD
+        // 2) revert if current k adjusted for fees is less than old k
+        // 3) update mutable storage (reserves + cumulative oracle prices)
+        // 4) emit event since mutable storage was updated
+        uint256 _swapFee = swapFee; 
+        uint256 baseBalanceAdjusted = baseBalance * BIPS_DIVISOR - baseAmountIn * _swapFee;
+        uint256 quoteBalanceAdjusted = quoteBalance * BIPS_DIVISOR - quoteAmountIn * _swapFee;
+        if (baseBalanceAdjusted * quoteBalanceAdjusted < uint(_baseReserves) * _quoteReserves * 1e8) revert INSUFFICIENT_INVARIANT();
+        }
         _update(baseBalance, quoteBalance, _baseReserves, _quoteReserves);
         emit Swap(msg.sender, baseAmountIn, quoteAmountIn, baseAmountOut, quoteAmountOut, to);
     }
@@ -258,52 +238,24 @@ contract Unipool is ERC20("", "", 18), ReentrancyGuard {
 
     // force reserves to match balances
     function sync() external nonReentrant {
-        _update(ERC20(base).balanceOf(address(this)), ERC20(quote).balanceOf(address(this)), baseReserves, quoteReserves);
-    }
-
-    /* -------------------------------------------------------------------------- */
-    /*                                ERC3156 LOGIC                               */
-    /* -------------------------------------------------------------------------- */
-
-    function maxFlashLoan(address token) external view returns (uint256) {
-        return ERC20(token).balanceOf(address(this));
-    }
-
-    function flashFee(address token, uint256 amount) public view returns (uint256) {
-        return FixedPointMathLib.fmul(amount, loanFee, BIPS_DIVISOR);
-    }
-
-    function flashLoan(
-        IERC3156FlashBorrower receiver,
-        address token,
-        uint256 amount,
-        bytes calldata data
-    ) external nonReentrant returns (bool) {
-        TransferHelper.safeTransfer(token, address(receiver), amount);
-        uint256 fee = flashFee(token, amount);
-        receiver.onFlashLoan(msg.sender, token, amount, flashFee(token, amount), data);
-        TransferHelper.safeTransferFrom(token, address(receiver), address(this), amount + fee);
-        return true;
+        _update(
+            ERC20(base).balanceOf(address(this)), 
+            ERC20(quote).balanceOf(address(this)), 
+            baseReserves, 
+            quoteReserves
+        );
     }
 
     /* -------------------------------------------------------------------------- */
     /*                              INTERNAL HELPERS                              */
     /* -------------------------------------------------------------------------- */
 
-    // function scaleK(uint256 x, uint256 y, uint256 tk) public pure returns (uint256, uint256) {
-    //     x *= rootTk / FixedPointMathLib.sqrt(x*y);
-    //     y *= rootTk / FixedPointMathLib.sqrt(tk);
-    //     return (x, y);
-    // }
-
     // unchecked division
-    function uDiv(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        assembly {
-            z := div(x, y)
-        }
-    }
+    function uDiv(uint256 x, uint256 y) internal pure returns (uint256 z) {assembly {z := div(x, y)}}
+    function min(uint256 x, uint256 y) internal pure returns (uint256 z) {z = x < y ? x : y;}
+}
 
-    function min(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        z = x < y ? x : y;
-    }
+// naming left for old contract support
+interface IUniswapV2Callee {
+    function uniswapV2Call(address sender, uint amount0, uint amount1, bytes calldata data) external;
 }

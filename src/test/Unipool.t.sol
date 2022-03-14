@@ -4,6 +4,8 @@ pragma solidity >=0.8;
 import {ERC20} from "@rari-capital/solmate/src/tokens/ERC20.sol";
 
 import "../Unipool.sol";
+import {UnipoolFactory} from "../UnipoolFactory.sol";
+
 
 import "./test.sol";
 
@@ -18,22 +20,72 @@ contract MockContract is ERC20 {
     }
 }
 
+interface IUniswapV2Pair {
+    event Approval(address indexed owner, address indexed spender, uint value);
+    event Transfer(address indexed from, address indexed to, uint value);
+
+    function name() external pure returns (string memory);
+    function symbol() external pure returns (string memory);
+    function decimals() external pure returns (uint8);
+    function totalSupply() external view returns (uint);
+    function balanceOf(address owner) external view returns (uint);
+    function allowance(address owner, address spender) external view returns (uint);
+
+    function approve(address spender, uint value) external returns (bool);
+    function transfer(address to, uint value) external returns (bool);
+    function transferFrom(address from, address to, uint value) external returns (bool);
+
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+    function PERMIT_TYPEHASH() external pure returns (bytes32);
+    function nonces(address owner) external view returns (uint);
+
+    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
+
+    event Mint(address indexed sender, uint amount0, uint amount1);
+    event Burn(address indexed sender, uint amount0, uint amount1, address indexed to);
+    event Swap(
+        address indexed sender,
+        uint amount0In,
+        uint amount1In,
+        uint amount0Out,
+        uint amount1Out,
+        address indexed to
+    );
+    event Sync(uint112 reserve0, uint112 reserve1);
+
+    function MINIMUM_LIQUIDITY() external pure returns (uint);
+    function factory() external view returns (address);
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+    function price0CumulativeLast() external view returns (uint);
+    function price1CumulativeLast() external view returns (uint);
+    function kLast() external view returns (uint);
+
+    function mint(address to) external returns (uint liquidity);
+    function burn(address to) external returns (uint amount0, uint amount1);
+    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
+    function skim(address to) external;
+    function sync() external;
+
+    function initialize(address, address, uint) external;
+}
+
 contract UnipoolTest is DSTest {
 
+    UnipoolFactory factory;
     MockContract baseToken;
     MockContract quoteToken;
     Unipool pair;
 
     function setUp() public {
+        factory = new UnipoolFactory();
         baseToken = new MockContract("Base Token", "BASE");
         quoteToken = new MockContract("Quote Token", "QUOTE");
         // Pair needs initialized after deployment
-        pair = new Unipool();
-        pair.initialize(address(baseToken), address(quoteToken), 30, 30);
+        pair = Unipool(factory.createPair(address(baseToken), address(quoteToken), 30));
         baseToken.mint(address(this), 1e27);
         quoteToken.mint(address(this), 1e27);
-        baseToken.approve(address(pair), type(uint256).max);
-        quoteToken.approve(address(pair), type(uint256).max);
     }
 
     function addLiquidity(uint baseAmount, uint quoteAmount) internal {
@@ -51,7 +103,7 @@ contract UnipoolTest is DSTest {
 
         (uint baseReserves, uint quoteReserves,) = pair.getReserves();
         require(pair.totalSupply() == expectedLiquidity, "make sure pair supply is equal to expected liquidity");
-        require(pair.balanceOf(address(this)) == expectedLiquidity - 1000, "make sure pair balance of this contract is equal to expected liquidity minus MIN_LIQ");
+        require(pair.balanceOf(address(this)) == expectedLiquidity - 10_000, "make sure pair balance of this contract is equal to expected liquidity minus MIN_LIQ");
         require(baseToken.balanceOf(address(pair)) == baseAmount, "make sure base token balance of pair is equal to base amount");
         require(quoteToken.balanceOf(address(pair)) == quoteAmount, "make sure quote token balance of pair is equal to quote amount");
         require(baseReserves == baseAmount, "make sure base reserves equal base amount");
@@ -68,7 +120,7 @@ contract UnipoolTest is DSTest {
 
         baseToken.transfer(address(pair), swapAmount);
         
-        pair.swap(0, expectedOutputAmount, address(this));
+        pair.swap(0, expectedOutputAmount, address(this), "");
 
         (uint baseReserves, uint quoteReserves,) = pair.getReserves();
         require(baseReserves == baseAmount + swapAmount, "make sure base reserves equal base amount + swap amount");
@@ -90,7 +142,7 @@ contract UnipoolTest is DSTest {
 
         quoteToken.transfer(address(pair), swapAmount);
 
-        pair.swap(expectedOutputAmount, 0, address(this));
+        pair.swap(expectedOutputAmount, 0, address(this), "");
 
         (uint baseReserves, uint quoteReserves,) = pair.getReserves();
         require(baseReserves == baseAmount - expectedOutputAmount);
@@ -109,18 +161,18 @@ contract UnipoolTest is DSTest {
 
         addLiquidity(baseAmount, quoteAmount);
 
-        pair.transfer(address(pair), expectedLiquidity - 1000);
+        pair.transfer(address(pair), expectedLiquidity - 10_000);
 
         pair.burn(address(this));
 
         require(pair.balanceOf(address(this)) == 0);
-        require(pair.totalSupply() == 1000);
-        require(baseToken.balanceOf(address(pair)) == 1000);
-        require(quoteToken.balanceOf(address(pair)) == 1000);
+        require(pair.totalSupply() == 10_000);
+        require(baseToken.balanceOf(address(pair)) == 10_000);
+        require(quoteToken.balanceOf(address(pair)) == 10_000);
         uint totalSupplyToken0 = baseToken.totalSupply();
         uint totalSupplyToken1 = quoteToken.totalSupply();
-        require(baseToken.balanceOf(address(this)) == totalSupplyToken0 - 1000);
-        require(quoteToken.balanceOf(address(this)) == totalSupplyToken1 - 1000);
+        require(baseToken.balanceOf(address(this)) == totalSupplyToken0 - 10_000);
+        require(quoteToken.balanceOf(address(this)) == totalSupplyToken1 - 10_000);
     }
 
     // function testPriceCumulativeLast() public {
