@@ -53,8 +53,7 @@ where ![k](https://latex.codecogs.com/svg.image?k) is now a different constant t
 * ♻️Invariant imitation
 * ✅Removed Uniswap LP fee
 * ✅Added swap fee customization
-* ✅Added ERC3156 Flash-loan support (to save gas)
-* ✅Optional TWAP support (to save gas)
+* ♻️Optional TWAP support (to save gas)
 
 
 ## Blueprint
