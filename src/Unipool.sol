@@ -8,7 +8,7 @@ pragma solidity >=0.8.0;
 //  ██████  ██   ████ ██ ██       ██████   ██████  ███████
 
 import {ERC20}                  from "@rari-capital/solmate/src/tokens/ERC20.sol";
-import {ReentrancyGuard}        from "@rari-capital/solmate/src/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard}        from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {FixedPointMathLib}      from "@rari-capital/solmate/src/utils/FixedPointMathLib.sol";
 import {TransferHelper}         from "@uniswap/lib/contracts/libraries/TransferHelper.sol";
 
@@ -64,7 +64,7 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuard {
     /*                               INITIALIZATION                               */
     /* -------------------------------------------------------------------------- */
 
-    error BAD_FEE();
+    error INITIALIZED();
 
     // called once by the factory at time of deployment
     function initialize(
@@ -72,11 +72,8 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuard {
         address _quote, 
         uint256 _swapFee
     ) external {
-        // 1) revert if swap fee is greater than 50 bips
-        if (_swapFee > 50) revert BAD_FEE();
-        // 2) initialize mutable storage
+        if (swapFee > 0) revert INITIALIZED();
         (base, quote, swapFee) = (_base, _quote, _swapFee);
-        // 3) lock minimum liquidity to prevent division by zero
         _mint(address(0), BIPS_DIVISOR); 
     }
 
@@ -176,7 +173,7 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuard {
         uint256 quoteAmountOut, 
         address to, 
         bytes calldata data
-    ) public nonReentrant {
+    ) external nonReentrant {
         // 1) revert if both amounts out are zero
         // 2) store reserves in memory to avoid SLOAD"s
         // 3) revert if both amounts out
@@ -252,6 +249,7 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuard {
 
     // unchecked division
     function uDiv(uint256 x, uint256 y) internal pure returns (uint256 z) {assembly {z := div(x, y)}}
+
     function min(uint256 x, uint256 y) internal pure returns (uint256 z) {z = x < y ? x : y;}
 }
 
