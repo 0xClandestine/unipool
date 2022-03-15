@@ -71,7 +71,7 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuardUpgrade
         address _base, 
         address _quote, 
         uint256 _swapFee
-    ) external {
+    ) external initializer {
         if (swapFee > 0) revert INITIALIZED();
         (base, quote, swapFee) = (_base, _quote, _swapFee);
         _mint(address(0), BIPS_DIVISOR); 
