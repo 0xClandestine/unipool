@@ -4,7 +4,6 @@
 
 ## Features
 
-* ♻️Invariant imitation
 * ✅Removed Uniswap LP fee
 * ✅Added swap fee customization
 * ♻️Optional TWAP support (to save gas)
