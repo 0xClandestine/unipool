@@ -10,30 +10,8 @@ interface Unipool {
 }
 
 library UnipoolLibrary {
-    // Taken from @rari-capital/solmate/src/utils/CREATE3.sol
-    //--------------------------------------------------------------------------------//
-    // Opcode     | Opcode + Arguments    | Description      | Stack View             //
-    //--------------------------------------------------------------------------------//
-    // 0x36       |  0x36                 | CALLDATASIZE     | size                   //
-    // 0x3d       |  0x3d                 | RETURNDATASIZE   | 0 size                 //
-    // 0x3d       |  0x3d                 | RETURNDATASIZE   | 0 0 size               //
-    // 0x37       |  0x37                 | CALLDATACOPY     |                        //
-    // 0x36       |  0x36                 | CALLDATASIZE     | size                   //
-    // 0x3d       |  0x3d                 | RETURNDATASIZE   | 0 size                 //
-    // 0x34       |  0x34                 | CALLVALUE        | value 0 size           //
-    // 0xf0       |  0xf0                 | CREATE           | newContract            //
-    //--------------------------------------------------------------------------------//
-    // Opcode     | Opcode + Arguments    | Description      | Stack View             //
-    //--------------------------------------------------------------------------------//
-    // 0x67       |  0x67XXXXXXXXXXXXXXXX | PUSH8 bytecode   | bytecode               //
-    // 0x3d       |  0x3d                 | RETURNDATASIZE   | 0 bytecode             //
-    // 0x52       |  0x52                 | MSTORE           |                        //
-    // 0x60       |  0x6008               | PUSH1 08         | 8                      //
-    // 0x60       |  0x6018               | PUSH1 18         | 24 8                   //
-    // 0xf3       |  0xf3                 | RETURN           |                        //
-    //--------------------------------------------------------------------------------//
-    bytes internal constant PROXY_BYTECODE = hex"67_36_3d_3d_37_36_3d_34_f0_3d_52_60_08_60_18_f3";
-    bytes32 internal constant PROXY_BYTECODE_HASH = keccak256(PROXY_BYTECODE);
+
+    uint256 internal constant BIPS_DIVISOR = 10_000;
 
     function uDiv(uint256 x, uint256 y) internal pure returns (uint256 z) {assembly {z := div(x, y)}}
 
@@ -45,33 +23,43 @@ library UnipoolLibrary {
         (token0, token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
     }
 
-    /// Modified from Solmate (https://github.com/Rari-Capital/solmate/blob/main/src/utils/CREATE3.sol)
-    function getDeployed(
-        address deployer, 
-        bytes32 salt
-    ) internal pure returns (address) {
-        address proxy = address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xFF), deployer, salt, PROXY_BYTECODE_HASH)))));
-        return address(uint160(uint256(keccak256(abi.encodePacked(hex"d6_94", proxy, hex"01")))));
+    function predictDeterministicAddress(
+        address implementation,
+        bytes32 salt,
+        address deployer
+    ) internal pure returns (address predicted) {
+        assembly {
+            let ptr := mload(0x40)
+            mstore(ptr, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)
+            mstore(add(ptr, 0x14), shl(0x60, implementation))
+            mstore(add(ptr, 0x28), 0x5af43d82803e903d91602b57fd5bf3ff00000000000000000000000000000000)
+            mstore(add(ptr, 0x38), shl(0x60, deployer))
+            mstore(add(ptr, 0x4c), salt)
+            mstore(add(ptr, 0x6c), keccak256(ptr, 0x37))
+            predicted := keccak256(add(ptr, 0x37), 0x55)
+        }
     }
 
-    // calculates the CREATE3 address for a pair without making any external calls
+    // calculates the clone address for a pair without making any external calls
     function pairFor(
-        address factory, 
+        address factory,
+        address implementation,
         address tokenA, 
         address tokenB 
     ) internal pure returns (address pair) {
         (address token0, address token1) = sortTokens(tokenA, tokenB);
-        pair = getDeployed(factory, keccak256(abi.encodePacked(token0, token1)));
+        pair = predictDeterministicAddress(implementation, keccak256(abi.encodePacked(token0, token1)), factory);
     }
 
     // fetches and sorts the reserves for a pair
     function getReserves(
-        address factory, 
+        address factory,
+        address implementation,
         address tokenA, 
         address tokenB
     ) internal view returns (uint reserveA, uint reserveB) {
         (address token0,) = sortTokens(tokenA, tokenB);
-        (uint baseReserves, uint quoteReserves,) = Unipool(pairFor(factory, tokenA, tokenB)).getReserves();
+        (uint baseReserves, uint quoteReserves,) = Unipool(pairFor(factory, implementation, tokenA, tokenB)).getReserves();
         (reserveA, reserveB) = tokenA == token0 ? (baseReserves, quoteReserves) : (quoteReserves, baseReserves);
     }
 
@@ -90,8 +78,8 @@ library UnipoolLibrary {
         uint reserveIn, 
         uint reserveOut
     ) internal pure returns (uint amountOut) {
-        uint amountInWithFee = amountIn * (997);
-        amountOut = uDiv(amountInWithFee * reserveOut, reserveIn * 1000 + amountInWithFee);
+        uint amountInWithFee = amountIn * 9975;
+        amountOut = uDiv(amountInWithFee * reserveOut, reserveIn * BIPS_DIVISOR + amountInWithFee);
     }
 
     // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
@@ -100,7 +88,7 @@ library UnipoolLibrary {
         uint reserveIn, 
         uint reserveOut
     ) internal pure returns (uint amountIn) {
-        amountIn = uDiv(reserveIn * amountOut * 1000, reserveOut - amountOut * 997) + 1;
+        amountIn = uDiv(reserveIn * amountOut * BIPS_DIVISOR, reserveOut - amountOut * 9975) + 1;
     }
 
     /* -------------------------------------------------------------------------- */
@@ -109,8 +97,9 @@ library UnipoolLibrary {
 
     // performs chained getAmountOut calculations on any number of pairs
     function getAmountsOut(
-        address factory, 
-        uint amountIn, 
+        address factory,
+        address implementation,
+        uint amountIn,
         address[] memory path
     ) internal view returns (uint[] memory amounts) {
         unchecked {
@@ -120,7 +109,7 @@ library UnipoolLibrary {
             amounts[0] = amountIn;
             
             for (uint i; i < pathLength - 1; ++i) {
-                (uint reserveIn, uint reserveOut) = getReserves(factory, path[i], path[i + 1]);
+                (uint reserveIn, uint reserveOut) = getReserves(factory, implementation, path[i], path[i + 1]);
                 amounts[i + 1] = getAmountOut(amounts[i], reserveIn, reserveOut);
             }
         }
@@ -128,7 +117,8 @@ library UnipoolLibrary {
 
     // performs chained getAmountIn calculations on any number of pairs
     function getAmountsIn(
-        address factory, 
+        address factory,
+        address implementation,
         uint amountOut, 
         address[] memory path
     ) internal view returns (uint[] memory amounts) {
@@ -139,7 +129,7 @@ library UnipoolLibrary {
             amounts[pathLength - 1] = amountOut;
             
             for (uint i = pathLength - 1; i > 0; --i) {
-                (uint reserveIn, uint reserveOut) = getReserves(factory, path[i - 1], path[i]);
+                (uint reserveIn, uint reserveOut) = getReserves(factory, implementation, path[i - 1], path[i]);
                 amounts[i - 1] = getAmountIn(amounts[i], reserveIn, reserveOut);
             }
         }

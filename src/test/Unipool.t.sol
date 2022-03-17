@@ -2,76 +2,45 @@
 pragma solidity >=0.8;
 
 import {ERC20} from "@rari-capital/solmate/src/tokens/ERC20.sol";
-
-import "../Unipool.sol";
 import {UnipoolFactory} from "../UnipoolFactory.sol";
+import "../Unipool.sol"; // where my custahs at
+import "./utils/test.sol";
 
-
-import "./test.sol";
-
-contract MockContract is ERC20 {
-    constructor(
-        string memory name, 
-        string memory symbol
-    ) ERC20(name, symbol, 18) {}
-
+contract MockERC20 is ERC20 {    
+    constructor(string memory name, string memory symbol) ERC20(name, symbol, 18) {}
     function mint(address guy, uint256 wad) public {
         _mint(guy, wad);
     }
 }
 
 interface IUniswapV2Pair {
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Transfer(address indexed from, address indexed to, uint value);
-
     function name() external pure returns (string memory);
     function symbol() external pure returns (string memory);
     function decimals() external pure returns (uint8);
     function totalSupply() external view returns (uint);
     function balanceOf(address owner) external view returns (uint);
     function allowance(address owner, address spender) external view returns (uint);
-
     function approve(address spender, uint value) external returns (bool);
     function transfer(address to, uint value) external returns (bool);
     function transferFrom(address from, address to, uint value) external returns (bool);
-
-    function DOMAIN_SEPARATOR() external view returns (bytes32);
-    function PERMIT_TYPEHASH() external pure returns (bytes32);
-    function nonces(address owner) external view returns (uint);
-    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
-
-
-    function MINIMUM_LIQUIDITY() external pure returns (uint);
-    function factory() external view returns (address);
-    function token0() external view returns (address);
-    function token1() external view returns (address);
     function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
-    function price0CumulativeLast() external view returns (uint);
-    function price1CumulativeLast() external view returns (uint);
-    function kLast() external view returns (uint);
-
-    function mint(address to) external returns (uint liquidity);
-    function burn(address to) external returns (uint amount0, uint amount1);
-    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
-    function skim(address to) external;
-    function sync() external;
-
     function initialize(address, address, uint) external;
 }
 
 contract UnipoolTest is DSTest {
 
     UnipoolFactory factory;
-    MockContract baseToken;
-    MockContract quoteToken;
+    MockERC20 baseToken;
+    MockERC20 quoteToken;
     Unipool pair;
 
     function setUp() public {
         factory = new UnipoolFactory();
-        baseToken = new MockContract("Base Token", "BASE");
-        quoteToken = new MockContract("Quote Token", "QUOTE");
-        // Pair needs initialized after deployment
+        baseToken = new MockERC20("Base Token", "BASE");
+        quoteToken = new MockERC20("Quote Token", "QUOTE");
+        // Pair needs to be initialized after deployment
         pair = Unipool(factory.createPair(address(baseToken), address(quoteToken)));
+        //mint tokens to create lp to testing 'this' contract
         baseToken.mint(address(this), 1e27);
         quoteToken.mint(address(this), 1e27);
     }
@@ -162,17 +131,6 @@ contract UnipoolTest is DSTest {
         require(baseToken.balanceOf(address(this)) == totalSupplyToken0 - 10_000);
         require(quoteToken.balanceOf(address(this)) == totalSupplyToken1 - 10_000);
     }
-
-    // function testPriceCumulativeLast() public {
-    //     uint baseAmount = 3e18;
-    //     uint quoteAmount = 3e18;
-        
-    //     addLiquidity(baseAmount, quoteAmount);
-
-    //     (uint baseReserves, uint quoteReserves, uint lastUpdate) = pair.getReserves();
-    
-
-    // }
 }
 
 

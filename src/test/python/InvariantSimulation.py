@@ -42,13 +42,10 @@ adjusted amount out: {amountOut2 / 1e18}
 # test price 
 
 x2 = x + amountIn;
-
 y2 = y - amountOut2;
 
 # print(x2 * y2)
 
 scaler = scaleK(x2, y2, x2 * y2 * 10)
-
 amountOut3 = (y2 * scaler * amountIn) / (x2 * scaler + amountIn)
-
 print(f"adjusted amount out, trade 2: {amountOut3/ 1e18}")

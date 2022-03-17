@@ -40,11 +40,12 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuardUpgrade
     // exist (but are owned by account zero). That number is BIPS_DIVISOR, ten thousand.
     uint256 internal constant PRECISION = 112;
     uint256 internal constant BIPS_DIVISOR = 10_000;
-
+    
     /* -------------------------------------------------------------------------- */
     /*                                MUTABLE STATE                               */
     /* -------------------------------------------------------------------------- */
 
+    address public factory;
     address public base;
     address public quote;
 
@@ -77,7 +78,6 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuardUpgrade
         _mint(address(0), BIPS_DIVISOR); 
 
         __ReentrancyGuard_init();
-
     }
 
     error BALANCE_OVERFLOW();
@@ -144,13 +144,13 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuardUpgrade
         uint256 baseBalance = ERC20(_base).balanceOf(address(this));          
         uint256 quoteBalance = ERC20(_quote).balanceOf(address(this));          
         uint256 liquidity = balanceOf[address(this)];                 
-        uint256 _totalSupply = totalSupply;         
+        uint256 _totalSupply = totalSupply;
         // 2) division was originally unchecked, using balances ensures pro-rata distribution
         baseAmount = uDiv(liquidity * baseBalance, _totalSupply); 
         quoteAmount = uDiv(liquidity * quoteBalance, _totalSupply);
         // 3) revert if amountOuts are both equal to zero
         if (baseAmount == 0 && quoteAmount == 0) revert INSUFFICIENT_LIQUIDITY_BURNED();
-        // 4) burn LP tokens from this contract"s balance        
+        // 4) burn LP tokens from this contract"s balance
         _burn(address(this), liquidity);
         // 5) return liquidity providers underlying tokens        
         TransferHelper.safeTransfer(_base, to, baseAmount);
