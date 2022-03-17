@@ -5,7 +5,6 @@
 # The Default Profile
 [default]
 
-
 remappings = [
   "@ds=lib/ds-test/src/",
   "@std=lib/forge-std/src/",
@@ -15,7 +14,6 @@ remappings = [
 
 src = "src"
 out = "out"
-
 
 libs = ["node_modules"]
 

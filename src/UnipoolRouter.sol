@@ -6,8 +6,22 @@ import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IERC20.sol";
 import "@uniswap/lib/contracts/libraries/TransferHelper.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/draft-IERC20Permit.sol";
 
 import "./libraries/UnipoolLibrary.sol";
+
+interface IERC20PermitAllowed {
+    function permit(
+        address holder,
+        address spender,
+        uint256 nonce,
+        uint256 expiry,
+        bool allowed,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external;
+}
 
 contract UnipoolRouter {
 
@@ -240,7 +254,7 @@ contract UnipoolRouter {
         address[] calldata path,
         address to,
         uint deadline
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) public ensure(deadline) returns (uint[] memory amounts) {
         unchecked {
             address _implementation = implementation;
             amounts = UnipoolLibrary.getAmountsOut(factory, _implementation, amountIn, path);
@@ -260,7 +274,7 @@ contract UnipoolRouter {
         address[] calldata path,
         address to,
         uint deadline
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) public ensure(deadline) returns (uint[] memory amounts) {
         address _implementation = implementation;
         amounts = UnipoolLibrary.getAmountsIn(factory, implementation, amountOut, path);
         require(amounts[0] <= amountInMax, "EXCESSIVE_INPUT_AMOUNT");
@@ -294,7 +308,7 @@ contract UnipoolRouter {
         address[] calldata path, 
         address to, 
         uint deadline
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) public ensure(deadline) returns (uint[] memory amounts) {
         // Store the strings w
         require(path[path.length - 1] == WETH, "INVALID_PATH");
         address _implementation = implementation;
@@ -319,7 +333,7 @@ contract UnipoolRouter {
         address[] calldata path, 
         address to, 
         uint deadline
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) public ensure(deadline) returns (uint[] memory amounts) {
         require(path[path.length - 1] == WETH, "INVALID_PATH");
         address _implementation = implementation;
         amounts = UnipoolLibrary.getAmountsOut(factory, _implementation, amountIn, path);
@@ -353,7 +367,101 @@ contract UnipoolRouter {
         if (msg.value > amounts[0]) TransferHelper.safeTransferETH(msg.sender, msg.value - amounts[0]);
     }
 
-    // **** SWAP (supporting fee-on-transfer tokens) ****
+    /* -------------------------------------------------------------------------- */
+    /*                              PERMIT SWAP LOGIC                             */
+    /* -------------------------------------------------------------------------- */
+
+    function swapExactTokensForTokensUsingPermit(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline, uint8 v, bytes32 r, bytes32 s
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        IERC20Permit(path[0]).permit(msg.sender, address(this), amountIn, deadline, v, r, s);
+        amounts = swapExactTokensForTokens(amountIn, amountOutMin, path, to, deadline);
+    }
+
+    function swapExactTokensForTokensUsingPermitAllowed(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        IERC20PermitAllowed(path[0]).permit(msg.sender, address(this), nonce, deadline, true, v, r, s);
+        amounts = swapExactTokensForTokens(amountIn, amountOutMin, path, to, deadline);
+    }
+
+    function swapTokensForExactTokensUsingPermit(
+        uint amountOut,
+        uint amountInMax,
+        address[] calldata path,
+        address to,
+        uint deadline, uint8 v, bytes32 r, bytes32 s
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        IERC20Permit(path[0]).permit(msg.sender, address(this), amountInMax, deadline, v, r, s);
+        amounts = swapTokensForExactTokens(amountOut, amountInMax, path, to, deadline);
+    }
+
+    function swapTokensForExactTokensUsingPermitAllowed(
+        uint amountOut,
+        uint amountInMax,
+        address[] calldata path,
+        address to,
+        uint deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        IERC20PermitAllowed(path[0]).permit(msg.sender, address(this), nonce, deadline, true, v, r, s);
+        amounts = swapTokensForExactTokens(amountOut, amountInMax, path, to, deadline);
+    }
+
+    function swapTokensForExactETHUsingPermit(    
+        uint amountOut, 
+        uint amountInMax, 
+        address[] calldata path, 
+        address to, 
+        uint deadline, uint8 v, bytes32 r, bytes32 s
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        IERC20Permit(path[0]).permit(msg.sender, address(this), amountInMax, deadline, v, r, s);
+        amounts = swapTokensForExactETH(amountOut, amountInMax, path, to, deadline);
+    }
+
+    function swapTokensForExactETHUsingPermitAllowed(    
+        uint amountOut, 
+        uint amountInMax, 
+        address[] calldata path, 
+        address to, 
+        uint deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        IERC20PermitAllowed(path[0]).permit(msg.sender, address(this), nonce, deadline, true, v, r, s);
+        amounts = swapTokensForExactETH(amountOut, amountInMax, path, to, deadline);
+    }
+
+    function swapExactTokensForETHUsingPermit(
+        uint amountIn, 
+        uint amountOutMin, 
+        address[] calldata path, 
+        address to, 
+        uint deadline, uint8 v, bytes32 r, bytes32 s
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        IERC20Permit(path[0]).permit(msg.sender, address(this), amountIn, deadline, v, r, s);
+        amounts = swapExactTokensForETH(amountIn, amountOutMin, path, to, deadline);
+    }
+
+    function swapExactTokensForETHUsingPermitAllowed(
+        uint amountIn, 
+        uint amountOutMin, 
+        address[] calldata path, 
+        address to, 
+        uint deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s
+    ) external ensure(deadline) returns (uint[] memory amounts) {
+        IERC20PermitAllowed(path[0]).permit(msg.sender, address(this), nonce, deadline, true, v, r, s);
+        amounts = swapExactTokensForETH(amountIn, amountOutMin, path, to, deadline);
+    }
+
+    /* -------------------------------------------------------------------------- */
+    /*               SWAP (supporting fee-on-transfer tokens) LOGIC               */
+    /* -------------------------------------------------------------------------- */
     // requires the initial amount to have already been sent to the first pair
     function _swapSupportingFeeOnTransferTokens(
         address[] memory path, 
@@ -374,7 +482,11 @@ contract UnipoolRouter {
             { // scope to avoid stack too deep errors
                 (uint reserve0, uint reserve1,) = pair.getReserves();
                 (uint reserveInput, uint reserveOutput) = input == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
-                amountOutput = UnipoolLibrary.getAmountOut(IERC20(input).balanceOf(address(pair)) - reserveInput, reserveInput, reserveOutput);
+                amountOutput = UnipoolLibrary.getAmountOut(
+                    IERC20(input).balanceOf(address(pair)) - reserveInput, 
+                    reserveInput, 
+                    reserveOutput
+                );
             }
             (uint amount0Out, uint amount1Out) = input == token0 ? (uint(0), amountOutput) : (amountOutput, uint(0));
             address to = i < path.length - 2 ? UnipoolLibrary.pairFor(factory, _implementation, output, path[i + 2]) : _to;

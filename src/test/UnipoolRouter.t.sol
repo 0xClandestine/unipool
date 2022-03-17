@@ -2,12 +2,12 @@
 pragma solidity >=0.8;
 
 import {ERC20}          from "@rari-capital/solmate/src/tokens/ERC20.sol";
+import {Strings}        from "@openzeppelin/contracts/utils/Strings.sol";
+
 import {UnipoolFactory} from "../UnipoolFactory.sol";
 import {UnipoolRouter}  from "../UnipoolRouter.sol";
 import {Unipool}        from "../Unipool.sol";
 import {DSTest}         from "./utils/test.sol";
-
-import {Strings}        from "@openzeppelin/contracts/utils/Strings.sol";
 
 contract MockERC20 is ERC20 {    
     constructor(string memory name, string memory symbol) ERC20(name, symbol, 18) {}
@@ -15,9 +15,6 @@ contract MockERC20 is ERC20 {
 }
 
 interface IUniswapV2Pair {
-    function name() external pure returns (string memory);
-    function symbol() external pure returns (string memory);
-    function decimals() external pure returns (uint8);
     function totalSupply() external view returns (uint);
     function balanceOf(address owner) external view returns (uint);
     function allowance(address owner, address spender) external view returns (uint);
@@ -52,6 +49,12 @@ contract UnipoolRouterTest is DSTest {
         // mint this address some test tokens
         baseToken.mint(address(this), 1e27);    // 1,000,000,000 tokens
         quoteToken.mint(address(this), 1e27);   // 1,000,000,000 tokens
+
+        // add liq to pool
+        addLiquidity(100e18, 1000e18);
+
+        // approve q toke
+        quoteToken.approve(address(router), type(uint256).max);
     }
 
     function addLiquidity(uint baseAmount, uint quoteAmount) internal {
@@ -60,15 +63,19 @@ contract UnipoolRouterTest is DSTest {
         pair.mint(address(this));
     }
 
+    function removeLiquidity() internal {
+        //take portion to some address, will make burns more expensive
+        pair.burn(address(this));
+    }
+     
     function testSwapExactTokensForTokens() public {
-        addLiquidity(100e18, 1000e18);
 
+        // quote token to cnv
         address[] memory path = new address[](2);
         path[0] = address(quoteToken);
         path[1] = address(baseToken);
 
-        quoteToken.approve(address(router), type(uint256).max);
-
+        // calc amountsOut for both tokens
         uint256[] memory amountsOut = router.swapExactTokensForTokens(
             1e18, 
             router.getAmountOut(1e18, 1000e18, 100e18), 
@@ -76,9 +83,10 @@ contract UnipoolRouterTest is DSTest {
             address(this), 
             block.timestamp
         );
-
+        //extract token 
         uint256 amountOut = amountsOut[amountsOut.length - 1];
-
+        // confirm calc 
         require(amountOut == 99650598527968351, Strings.toString(amountOut));
     }
 }
+

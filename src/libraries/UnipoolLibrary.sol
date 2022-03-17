@@ -40,6 +40,8 @@ library UnipoolLibrary {
         }
     }
 
+    error NONEXISTENT_PAIR();
+
     // calculates the clone address for a pair without making any external calls
     function pairFor(
         address factory,
@@ -49,6 +51,7 @@ library UnipoolLibrary {
     ) internal pure returns (address pair) {
         (address token0, address token1) = sortTokens(tokenA, tokenB);
         pair = predictDeterministicAddress(implementation, keccak256(abi.encodePacked(token0, token1)), factory);
+        if (pair == address(0)) revert NONEXISTENT_PAIR();
     }
 
     // fetches and sorts the reserves for a pair

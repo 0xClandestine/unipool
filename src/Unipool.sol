@@ -91,7 +91,7 @@ contract Unipool is ERC20("Unipool LP Token", "CLP", 18), ReentrancyGuardUpgrade
     ) private {
         unchecked {
             // 1) revert if both balances are greater than 2**112
-            if (baseBalance > type(uint112).max && quoteBalance > type(uint112).max) revert BALANCE_OVERFLOW();
+            if (baseBalance > type(uint112).max || quoteBalance > type(uint112).max) revert BALANCE_OVERFLOW();
             // 2) store current time in memory (mod 2**32 to prevent DoS in 20 years)
             uint32 timestampAdjusted = uint32(block.timestamp % 2**32);
             // 3) store elapsed time since last update

@@ -12,19 +12,21 @@ contract UnipoolFactory {
 
     address public implementation = address(new Unipool());
 
+    error IDENTICAL_ADDRESSES();
+    error PAIR_ALREADY_EXISTS();
+    error ZERO_ADDRESS();
+
     function createPair(address tokenA, address tokenB) external returns (address pair) {
-        
-        require(tokenA != tokenB, "UniswapV2: IDENTICAL_ADDRESSES");
+        if (tokenA == tokenB) revert IDENTICAL_ADDRESSES();
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), "UniswapV2: ZERO_ADDRESS");
-        require(_getPair[token0][token1] == address(0), "UniswapV2: PAIR_EXISTS"); // single check is sufficient
+        if (token0 == address(0)) revert ZERO_ADDRESS();
+        if (_getPair[token0][token1] != address(0)) revert PAIR_ALREADY_EXISTS(); // single check is sufficient
 
         pair = cloneDeterministic(implementation, keccak256(abi.encodePacked(token0, token1)));
         Unipool(pair).initialize(token0, token1, 25);
         
         _getPair[token0][token1] = pair;
         allPairs.push(pair);
-        
         emit PairCreated(token0, token1, pair, allPairs.length);
     }
 
