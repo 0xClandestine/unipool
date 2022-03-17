@@ -29,8 +29,6 @@ src
 
 - [foundry](https://github.com/gakonst/foundry)
 - [solmate](https://github.com/Rari-Capital/solmate)
-- [forge-std](https://github.com/brockelmore/forge-std)
-- [foundry-toolchain](https://github.com/onbjerg/foundry-toolchain) by [onbjerg](https://github.com/onbjerg).
 
 ## Disclaimer
 
