@@ -12,17 +12,23 @@
         "url": "git+https://github.com/abigger87/unipool.git"
     },
     "devDependencies": {
-        "hardhat": "^2.7.0",
+        "hardhat": "^2.9.1",
+        "hardhat-deploy": "^0.11.0",
         "prettier": "^2.3.1",
         "prettier-plugin-solidity": "^1.0.0-beta.13"
     },
     "dependencies": {
+        "@nomiclabs/hardhat-waffle": "^2.0.3",
         "@openzeppelin/contracts": "^4.5.0",
         "@openzeppelin/contracts-upgradeable": "^4.5.2",
         "@rari-capital/solmate": "^6.2.0",
+        "@typechain/hardhat": "^5.0.0",
         "@uniswap/v2-core": "^1.0.1",
         "@uniswap/v2-periphery": "^1.1.0-beta.0",
-        "dstest": "^1.0.0"
+        "dotenv": "^16.0.0",
+        "dstest": "^1.0.0",
+        "hardhat-gas-reporter": "^1.0.8",
+        "solidity-coverage": "^0.7.20"
     },
     "scripts": {
         "setup": "make clean && make build",

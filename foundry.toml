@@ -12,8 +12,8 @@ remappings = [
   "@clones=lib/clones-with-immutable-args/src/",
 ]
 
-src = "src"
-out = "out"
+src = "contracts"
+out = "artifacts"
 
 libs = ["node_modules"]
 

@@ -1,6 +1,7 @@
 cache/
 out/
 node_modules/
+deploy/
 
 # Ignore Environment Variables!
 .env
