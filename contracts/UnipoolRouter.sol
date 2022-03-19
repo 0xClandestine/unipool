@@ -468,7 +468,7 @@ contract UnipoolRouter {
         address _to
     ) internal virtual {
         address _implementation = implementation;
-        // uint256 pathLength = path.length;
+        // uint256 pathLength = path.length; // removed to avoid stack too deep :(
 
         for (uint i; i < path.length - 1; ++i) {
             

@@ -4,11 +4,12 @@
 
 ## Features
 
-* ✅Removed Uniswap LP fee
-* ✅Added swap fee customization
-* ♻️Optional TWAP support (to save gas)
+* ✅ Removed Uniswap LP fee (1/6 of liquidity growth)
+* ✅ Added swap fee customization
+* ✅ Optimized pair creation (EIP-1167)
+* ✅ Added permit swap methods to router
 
-
+ 
 ## Blueprint
 
 ```ml
@@ -16,9 +17,18 @@ lib
 ├─ ds-test — https://github.com/dapphub/ds-test
 ├─ solmate — https://github.com/Rari-Capital/solmate
 src
-├─ tests
-│  └─ Unipool.t — "Unipool Tests"
-└─ Unipool — "A Minimal Unipool Contract"
+├─ Unipool — Gas optimized Uniswap V2 pair contract
+├─ UnipoolRouter - Gas optimized Uniswap V2 router contract
+└─ UnipoolFactory - Gas optimized Uniswap V2 factory contract
+```
+
+## Deployments
+
+```ml
+Ropsten
+├─ Unipool — 0x1dd1e75b2032bb5af9e4681a944e8bcb3dd64ce9
+├─ UnipoolRouter - 0xB11DDDf6F32eFc7d903802631CFc06EC400AB6e8
+└─ UnipoolFactory - 0x0b4EE8721cc2D777291eF918Fe05e7471c9c9dc5
 ```
 
 ## License
