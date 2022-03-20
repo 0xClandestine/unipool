@@ -377,7 +377,7 @@ contract UnipoolRouter {
         address[] calldata path,
         address to,
         uint deadline, uint8 v, bytes32 r, bytes32 s
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) external returns (uint[] memory amounts) {
         IERC20Permit(path[0]).permit(msg.sender, address(this), amountIn, deadline, v, r, s);
         amounts = swapExactTokensForTokens(amountIn, amountOutMin, path, to, deadline);
     }
@@ -388,7 +388,7 @@ contract UnipoolRouter {
         address[] calldata path,
         address to,
         uint deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) external returns (uint[] memory amounts) {
         IERC20PermitAllowed(path[0]).permit(msg.sender, address(this), nonce, deadline, true, v, r, s);
         amounts = swapExactTokensForTokens(amountIn, amountOutMin, path, to, deadline);
     }
@@ -399,7 +399,7 @@ contract UnipoolRouter {
         address[] calldata path,
         address to,
         uint deadline, uint8 v, bytes32 r, bytes32 s
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) external returns (uint[] memory amounts) {
         IERC20Permit(path[0]).permit(msg.sender, address(this), amountInMax, deadline, v, r, s);
         amounts = swapTokensForExactTokens(amountOut, amountInMax, path, to, deadline);
     }
@@ -410,7 +410,7 @@ contract UnipoolRouter {
         address[] calldata path,
         address to,
         uint deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) external returns (uint[] memory amounts) {
         IERC20PermitAllowed(path[0]).permit(msg.sender, address(this), nonce, deadline, true, v, r, s);
         amounts = swapTokensForExactTokens(amountOut, amountInMax, path, to, deadline);
     }
@@ -421,7 +421,7 @@ contract UnipoolRouter {
         address[] calldata path, 
         address to, 
         uint deadline, uint8 v, bytes32 r, bytes32 s
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) external returns (uint[] memory amounts) {
         IERC20Permit(path[0]).permit(msg.sender, address(this), amountInMax, deadline, v, r, s);
         amounts = swapTokensForExactETH(amountOut, amountInMax, path, to, deadline);
     }
@@ -432,7 +432,7 @@ contract UnipoolRouter {
         address[] calldata path, 
         address to, 
         uint deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) external returns (uint[] memory amounts) {
         IERC20PermitAllowed(path[0]).permit(msg.sender, address(this), nonce, deadline, true, v, r, s);
         amounts = swapTokensForExactETH(amountOut, amountInMax, path, to, deadline);
     }
@@ -443,7 +443,7 @@ contract UnipoolRouter {
         address[] calldata path, 
         address to, 
         uint deadline, uint8 v, bytes32 r, bytes32 s
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) external returns (uint[] memory amounts) {
         IERC20Permit(path[0]).permit(msg.sender, address(this), amountIn, deadline, v, r, s);
         amounts = swapExactTokensForETH(amountIn, amountOutMin, path, to, deadline);
     }
@@ -454,7 +454,7 @@ contract UnipoolRouter {
         address[] calldata path, 
         address to, 
         uint deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s
-    ) external ensure(deadline) returns (uint[] memory amounts) {
+    ) external returns (uint[] memory amounts) {
         IERC20PermitAllowed(path[0]).permit(msg.sender, address(this), nonce, deadline, true, v, r, s);
         amounts = swapExactTokensForETH(amountIn, amountOutMin, path, to, deadline);
     }
